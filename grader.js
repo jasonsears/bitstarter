@@ -22,10 +22,14 @@ References:
 */
 
 var fs = require('fs');
+var util = require('util');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "index.html http://foo.bar";
+var TMP_HTMLFILE_DEFAULT = "tmp.html";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -34,6 +38,16 @@ var assertFileExists = function(infile) {
         process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
     }
     return instr;
+};
+
+var assertURLExists = function(inurl) {    
+    rest.get(inurl).on('complete', function(result) {
+	if (result instanceof Error) {
+	    console.error('Error: ' + util.format(result.message));
+	} else {
+	    fs.writeFileSync(TMP_HTMLFILE_DEFAULT,result);
+        }
+    });
 };
 
 var cheerioHtmlFile = function(htmlfile) {
@@ -55,14 +69,30 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+
+var clone = function(fn) {
+    // Workaround for commander.js issue.
+    // http://stackoverflow.com/a/6772648
+    return fn.bind({});
+};
+
 if(require.main == module) {
     program
-        .option('-c, --checks ', 'Path to checks.json', assertFileExists, CHECKSFILE_DEFAULT)
-        .option('-f, --file ', 'Path to index.html', assertFileExists, HTMLFILE_DEFAULT)
+        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists))
+        .option('-u, --url <url>', 'Url to page to grade', clone(assertURLExists)) 
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    if(program.file) {
+	var checkJson = checkHtmlFile(program.file, program.checks);
+	var outJson = JSON.stringify(checkJson, null, 4);
+	console.log(outJson);
+    }
+    if(program.url) {
+        var checkJson = checkHtmlFile(TMP_HTMLFILE_DEFAULT, program.checks);
+        var outJson = JSON.stringify(checkJson, null, 4);
+        console.log(outJson);
+        
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
